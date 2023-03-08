@@ -7,34 +7,37 @@ from selenium.webdriver.support import expected_conditions as EC
 
 import time
 import smtplib
+import config
+import logging
 from bs4 import BeautifulSoup
 from email.message import EmailMessage
-
-import config
 
 CHROMEDRIVER_PATH = './src/chromedriver.exe'
 
 def main():
+
+    logging.basicConfig(filename='logs.log', encoding='utf-8', level=logging.INFO, format='%(asctime)s %(message)s')
     
-    # driver = setupWebDriver()
+    driver = setupWebDriver()
     
-    # emails_to_be_opened = retriveAllEmailsOnSinglePage(driver)
+    emails_to_be_opened = retrieveAllEmailsOnSinglePage(driver)
 
-    # collection_subjects_and_messages = openEmailsAndExtractText(driver, emails_to_be_opened)
+    collection_subjects_and_messages = openEmailsAndExtractText(driver, emails_to_be_opened)
 
-    # for i in collection_subjects_and_messages:
-    #     for j in i:
-    #         print(j)
-    #     print('\n\n---------------------------------------------------\n\n')
+    for i in collection_subjects_and_messages:
+        for j in i:
+            print(j)
+        print('\n\n---------------------------------------------------\n\n')
 
-    collection_subjects_and_messages = test_scraped_subject_and_message()
+    # collection_subjects_and_messages = test_scraped_subject_and_message()
 
-    sendEmail(collection_subjects_and_messages)
+    # sendEmail(collection_subjects_and_messages)
 
     # driver.close()
     # driver.quit()
 
 def sendEmail(collection_subjects_and_messages):
+    logging.info('sendEmail() function start')
     # creates SMTP session
     s = smtplib.SMTP('smtp.gmail.com', 587)
     
@@ -42,8 +45,10 @@ def sendEmail(collection_subjects_and_messages):
     s.starttls()
     
     # Authentication
+    logging.info('sendEmail() logging into SMTP client')
     s.login(config.g_username, config.g_password)
 
+    logging.info('sendEmail() starting loop to send email')
     for i in collection_subjects_and_messages:
         subject = i[0]
         message = i[1]
@@ -61,15 +66,17 @@ def sendEmail(collection_subjects_and_messages):
         # 5 second delay to slow things down
         time.sleep(5)
     
+    logging.info('sendEmail() email sending complete')
     # terminating the session
     s.quit()
 
     
 def openEmailsAndExtractText(driver, emails_to_be_opened):
-
+    logging.info('openEmailsAndExtractText() start')
     wait = WebDriverWait(driver, 10)
     collection_subjects_and_messages = []
 
+    logging.info('openEmailsAndExtractText() beginning loop to open email and parse out message')
     for e in emails_to_be_opened:
         single_subject_and_message = []
         single_subject_and_message.append(e.text.strip())
@@ -94,23 +101,30 @@ def openEmailsAndExtractText(driver, emails_to_be_opened):
 
         driver.execute_script("window.history.go(-1)")
 
+    logging.info('openEmailsAndExtractText() parsing complete returning from function')
     return collection_subjects_and_messages    
 
-def retriveAllEmailsOnSinglePage(driver):
+def retrieveAllEmailsOnSinglePage(driver):
+    logging.info('retrieveAllEmailsOnSinglePage() start')
     wait = WebDriverWait(driver, 10)
 
+
     driver.get(config.webpage_url)
+    logging.info('retrieveAllEmailsOnSinglePage() navigating to login page')
     wait.until(EC.element_to_be_clickable((By.ID, 'cnForm:returnToLogin'))).click()
 
+    logging.info('retrieveAllEmailsOnSinglePage() inputting credentials to login page and signing in')
     wait.until(EC.element_to_be_clickable((By.ID, 'user_email'))).send_keys(config.connect_username)
     wait.until(EC.element_to_be_clickable((By.ID, 'user_password'))).send_keys(config.connect_password)
     wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))).click()
 
+    logging.info('retrieveAllEmailsOnSinglePage() navigating to message link')
     wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Messaging"))).click()
 
     # Wait to give time for page to completely load
     wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'wrapper')))
 
+    logging.info('retrieveAllEmailsOnSinglePage() extracting all new email links from webpage')
     html = driver.page_source
     soup = BeautifulSoup(html, 'html5lib')
     table = soup.find('tbody', id=lambda L: L and L.startswith('messagesForm'))
@@ -122,9 +136,11 @@ def retriveAllEmailsOnSinglePage(driver):
         classes = message_link.attrs['class']
         if 'bold' not in classes:   # to be changed to "if 'bold' in classes" when testing is finished. 
             emails_to_be_opened.append(message_link)
+    logging.info('retrieveAllEmailsOnSinglePage() extraction complete, returning from function')
     return emails_to_be_opened
 
 def setupWebDriver():
+    logging.info('setupWebDriver() start')
     options = Options()
     # Keeps the browser open
     options.add_experimental_option("detach", True)
@@ -133,7 +149,7 @@ def setupWebDriver():
     # Removes the "This is being controlled by automation" alert / notification
     options.add_experimental_option("excludeSwitches", ['enable-automation'])
     # to supress the error messages/logs
-    # options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
     service = Service(CHROMEDRIVER_PATH)
     return Chrome(service=service, options=options)
