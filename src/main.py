@@ -104,7 +104,7 @@ def openEmailsAndExtractText(driver, emails_to_be_opened):
             # Clicking the message link to get to message text
             message_link = driver.find_element(by=By.LINK_TEXT, value=e.text.strip())
             message_link.click()
-            wait.until(EC.presence_of_element_located((By.ID, 'mssageForm')))
+            wait.until(EC.presence_of_element_located((By.ID, 'messageForm')))
             # Getting html and parsing with bs5
             html = driver.page_source
             soup = BeautifulSoup(html, 'html5lib')
