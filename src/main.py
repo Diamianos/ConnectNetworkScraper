@@ -60,6 +60,8 @@ def sendEmail(collection_subjects_and_messages):
             subject = i[0]
             message = i[1]
 
+            logging.info('sendEmail() sending email with subject: ' + subject)
+
             msg = EmailMessage()
             msg.set_content(message)
 
