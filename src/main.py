@@ -4,13 +4,19 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchAttributeException
+
+from bs4 import BeautifulSoup
+from email.message import EmailMessage
+
+from smtplib import SMTPAuthenticationError
+from smtplib import SMTPException
 
 import time
 import smtplib
 import config
 import logging
-from bs4 import BeautifulSoup
-from email.message import EmailMessage
 
 CHROMEDRIVER_PATH = './src/chromedriver.exe'
 
@@ -24,51 +30,62 @@ def main():
 
     collection_subjects_and_messages = openEmailsAndExtractText(driver, emails_to_be_opened)
 
-    for i in collection_subjects_and_messages:
-        for j in i:
-            print(j)
-        print('\n\n---------------------------------------------------\n\n')
-
     # collection_subjects_and_messages = test_scraped_subject_and_message()
 
-    # sendEmail(collection_subjects_and_messages)
+    sendEmail(collection_subjects_and_messages)
 
-    # driver.close()
-    # driver.quit()
+    driver.close()
+    driver.quit()
+
+    logging.info('main() script completed successfully')
+    logging.info('\n\n-----------------------------------------------------------------\n\n')
+
 
 def sendEmail(collection_subjects_and_messages):
     logging.info('sendEmail() function start')
-    # creates SMTP session
-    s = smtplib.SMTP('smtp.gmail.com', 587)
-    
-    # start TLS for security
-    s.starttls()
-    
-    # Authentication
-    logging.info('sendEmail() logging into SMTP client')
-    s.login(config.g_username, config.g_password)
 
-    logging.info('sendEmail() starting loop to send email')
-    for i in collection_subjects_and_messages:
-        subject = i[0]
-        message = i[1]
+    try:
+        # creates SMTP session
+        s = smtplib.SMTP('smtp.gmail.com', 587)
+        
+        # start TLS for security
+        s.starttls()
+        
+        # Authentication
+        logging.info('sendEmail() logging into SMTP client')
+        s.login(config.g_username, config.g_password)
 
-        msg = EmailMessage()
-        msg.set_content(message)
+        logging.info('sendEmail() starting loop to send email')
+        for i in collection_subjects_and_messages:
+            subject = i[0]
+            message = i[1]
 
-        msg['Subject'] = 'Letter From Griffin - ' + subject
-        msg['From'] = config.g_username
-        msg['To'] = config.g_username
+            msg = EmailMessage()
+            msg.set_content(message)
+
+            msg['Subject'] = 'Letter From Griffin - ' + subject
+            msg['From'] = config.g_username
+            msg['To'] = ", ".join(config.recipients)
+        
+            # sending the mail
+            s.send_message(msg)
+
+            # 5 second delay to slow things down
+            time.sleep(5)
     
-        # sending the mail
-        s.send_message(msg)
+        logging.info('sendEmail() email sending complete')
+        # terminating the session
+        s.quit()
+    except SMTPAuthenticationError as sae:
+        logging.error('SMTP Authenication Error at sendEmail()', exc_info=sae) 
+        raise SMTPAuthenticationError
+    except SMTPException as se:
+        logging.error('General SMTP Error at sendEmail()', exc_info=se) 
+        raise SMTPException
+    except Exception as e:
+        logging.error('General exception at sendEmail()', exc_info=e)
+        raise Exception
 
-        # 5 second delay to slow things down
-        time.sleep(5)
-    
-    logging.info('sendEmail() email sending complete')
-    # terminating the session
-    s.quit()
 
     
 def openEmailsAndExtractText(driver, emails_to_be_opened):
@@ -76,30 +93,46 @@ def openEmailsAndExtractText(driver, emails_to_be_opened):
     wait = WebDriverWait(driver, 10)
     collection_subjects_and_messages = []
 
-    logging.info('openEmailsAndExtractText() beginning loop to open email and parse out message')
-    for e in emails_to_be_opened:
-        single_subject_and_message = []
-        single_subject_and_message.append(e.text.strip())
+    logging.info('openEmailsAndExtractText() beginning loop to open email and parse out messages')
+    try:
+        for e in emails_to_be_opened:
+            single_subject_and_message = []
+            # Adding the subject of the message 
+            single_subject_and_message.append(e.text.strip())
 
-        wait.until(EC.presence_of_element_located((By.LINK_TEXT, e.text.strip())))
-        message_link = driver.find_element(by=By.LINK_TEXT, value=e.text.strip())
-        message_link.click()
-        wait.until(EC.presence_of_element_located((By.ID, 'messageForm')))
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html5lib')
-        form = soup.find('form', id='messageForm')
-        fieldset = form.find('fieldset')
-        divs = fieldset.find_all('div')
-        paragraphs = divs[5].find_all('p')
-        message_text = ''
-        for p in paragraphs:
-            if len(p.text) == 0:
-                continue
-            message_text += p.text + '\n\n'
-        single_subject_and_message.append(message_text)
-        collection_subjects_and_messages.append(single_subject_and_message)
+            wait.until(EC.presence_of_element_located((By.LINK_TEXT, e.text.strip())))
+            # Clicking the message link to get to message text
+            message_link = driver.find_element(by=By.LINK_TEXT, value=e.text.strip())
+            message_link.click()
+            wait.until(EC.presence_of_element_located((By.ID, 'mssageForm')))
+            # Getting html and parsing with bs5
+            html = driver.page_source
+            soup = BeautifulSoup(html, 'html5lib')
+            form = soup.find('form', id='messageForm')
+            fieldset = form.find('fieldset')
+            divs = fieldset.find_all('div')
+            paragraphs = divs[5].find_all('p')
+            message_text = ''
+            # Looping through all p tags to get all text
+            for p in paragraphs:
+                if len(p.text) == 0:
+                    continue
+                message_text += p.text + '\n\n'
+            single_subject_and_message.append(message_text)
+            # Adding to the collection that is returned at end of function
+            collection_subjects_and_messages.append(single_subject_and_message)
 
-        driver.execute_script("window.history.go(-1)")
+            # Hitting the back button on the chrome page
+            driver.execute_script("window.history.go(-1)")
+    except TimeoutException as te:
+        logging.error('Selenium TimeoutException at openEmailsAndExtractText()', exc_info=te)
+        raise TimeoutException
+    except NoSuchAttributeException as nsae:
+        logging.error('Selenium NoSuchAttributeException at openEmailsAndExtractText()', exc_info=nsae)
+        raise NoSuchAttributeException
+    except Exception as e:
+        logging.error('Error at openEmailsAndExtractText()', exc_info=e)
+        raise Exception
 
     logging.info('openEmailsAndExtractText() parsing complete returning from function')
     return collection_subjects_and_messages    
@@ -108,34 +141,44 @@ def retrieveAllEmailsOnSinglePage(driver):
     logging.info('retrieveAllEmailsOnSinglePage() start')
     wait = WebDriverWait(driver, 10)
 
+    try:
+        driver.get(config.webpage_url)
+        logging.info('retrieveAllEmailsOnSinglePage() navigating to login page')
+        wait.until(EC.element_to_be_clickable((By.ID, 'cnForm:returnToLogin'))).click()
 
-    driver.get(config.webpage_url)
-    logging.info('retrieveAllEmailsOnSinglePage() navigating to login page')
-    wait.until(EC.element_to_be_clickable((By.ID, 'cnForm:returnToLogin'))).click()
+        logging.info('retrieveAllEmailsOnSinglePage() inputting credentials to login page and signing in')
+        wait.until(EC.element_to_be_clickable((By.ID, 'user_email'))).send_keys(config.connect_username)
+        wait.until(EC.element_to_be_clickable((By.ID, 'user_password'))).send_keys(config.connect_password)
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))).click()
 
-    logging.info('retrieveAllEmailsOnSinglePage() inputting credentials to login page and signing in')
-    wait.until(EC.element_to_be_clickable((By.ID, 'user_email'))).send_keys(config.connect_username)
-    wait.until(EC.element_to_be_clickable((By.ID, 'user_password'))).send_keys(config.connect_password)
-    wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))).click()
+        logging.info('retrieveAllEmailsOnSinglePage() navigating to message link')
+        wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Messaging"))).click()
 
-    logging.info('retrieveAllEmailsOnSinglePage() navigating to message link')
-    wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Messaging"))).click()
+        # Wait to give time for page to completely load
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'wrapper')))
 
-    # Wait to give time for page to completely load
-    wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'wrapper')))
+        logging.info('retrieveAllEmailsOnSinglePage() extracting all new email links from webpage')
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html5lib')
+        table = soup.find('tbody', id=lambda L: L and L.startswith('messagesForm'))
+        rows = table.find_all('tr')
+        emails_to_be_opened = []
+        for r in rows:
+            row_table_data = r.find_all('td')
+            message_link = row_table_data[1].find('a')
+            classes = message_link.attrs['class']
+            if 'bold' in classes:   # if the message is bold, it has not been clicked before, and is therefore new
+                emails_to_be_opened.append(message_link)
+    except TimeoutException as te:
+        logging.error('Selenium TimeoutException at openEmailsAndExtractText()', exc_info=te)
+        raise TimeoutException
+    except NoSuchAttributeException as nsae:
+        logging.error('Selenium NoSuchAttributeException at openEmailsAndExtractText()', exc_info=nsae)
+        raise NoSuchAttributeException
+    except Exception as e:
+        logging.error('Error at retrieveAllEmailsOnSinglePage()', exc_info=e)
+        raise Exception
 
-    logging.info('retrieveAllEmailsOnSinglePage() extracting all new email links from webpage')
-    html = driver.page_source
-    soup = BeautifulSoup(html, 'html5lib')
-    table = soup.find('tbody', id=lambda L: L and L.startswith('messagesForm'))
-    rows = table.find_all('tr')
-    emails_to_be_opened = []
-    for r in rows:
-        row_table_data = r.find_all('td')
-        message_link = row_table_data[1].find('a')
-        classes = message_link.attrs['class']
-        if 'bold' not in classes:   # to be changed to "if 'bold' in classes" when testing is finished. 
-            emails_to_be_opened.append(message_link)
     logging.info('retrieveAllEmailsOnSinglePage() extraction complete, returning from function')
     return emails_to_be_opened
 
@@ -153,6 +196,9 @@ def setupWebDriver():
 
     service = Service(CHROMEDRIVER_PATH)
     return Chrome(service=service, options=options)
+
+if __name__ == "__main__":
+    main()
 
 def test_scraped_subject_and_message():
     collection_subjects_and_messages = []
@@ -211,7 +257,4 @@ In Christian Love'''
 
 
     return collection_subjects_and_messages
-
-if __name__ == "__main__":
-    main()
 
