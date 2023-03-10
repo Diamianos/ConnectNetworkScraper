@@ -44,49 +44,52 @@ def main():
 def sendEmail(collection_subjects_and_messages):
     logging.info('sendEmail() function start')
 
-    try:
-        # creates SMTP session
-        s = smtplib.SMTP('smtp.gmail.com', 587)
+    if len(collection_subjects_and_messages) > 0:
+        try:
+            # creates SMTP session
+            s = smtplib.SMTP('smtp.gmail.com', 587)
+            
+            # start TLS for security
+            s.starttls()
+            
+            # Authentication
+            logging.info('sendEmail() logging into SMTP client')
+            s.login(config.g_username, config.g_password)
+
+            logging.info('sendEmail() starting loop to send email')
+            for i in collection_subjects_and_messages:
+                subject = i[0]
+                message = i[1]
+
+                logging.info('sendEmail() sending email with subject: ' + subject)
+
+                msg = EmailMessage()
+                msg.set_content(message)
+
+                msg['Subject'] = 'Letter From Griffin - ' + subject
+                msg['From'] = config.g_username
+                msg['To'] = ", ".join(config.recipients)
+            
+                # sending the mail
+                s.send_message(msg)
+
+                # 5 second delay to slow things down
+                time.sleep(5)
         
-        # start TLS for security
-        s.starttls()
-        
-        # Authentication
-        logging.info('sendEmail() logging into SMTP client')
-        s.login(config.g_username, config.g_password)
-
-        logging.info('sendEmail() starting loop to send email')
-        for i in collection_subjects_and_messages:
-            subject = i[0]
-            message = i[1]
-
-            logging.info('sendEmail() sending email with subject: ' + subject)
-
-            msg = EmailMessage()
-            msg.set_content(message)
-
-            msg['Subject'] = 'Letter From Griffin - ' + subject
-            msg['From'] = config.g_username
-            msg['To'] = ", ".join(config.recipients)
-        
-            # sending the mail
-            s.send_message(msg)
-
-            # 5 second delay to slow things down
-            time.sleep(5)
-    
-        logging.info('sendEmail() email sending complete')
-        # terminating the session
-        s.quit()
-    except SMTPAuthenticationError as sae:
-        logging.error('SMTP Authenication Error at sendEmail()', exc_info=sae) 
-        raise SMTPAuthenticationError
-    except SMTPException as se:
-        logging.error('General SMTP Error at sendEmail()', exc_info=se) 
-        raise SMTPException
-    except Exception as e:
-        logging.error('General exception at sendEmail()', exc_info=e)
-        raise Exception
+            logging.info('sendEmail() email sending complete')
+            # terminating the session
+            s.quit()
+        except SMTPAuthenticationError as sae:
+            logging.error('SMTP Authenication Error at sendEmail()', exc_info=sae) 
+            raise SMTPAuthenticationError
+        except SMTPException as se:
+            logging.error('General SMTP Error at sendEmail()', exc_info=se) 
+            raise SMTPException
+        except Exception as e:
+            logging.error('General exception at sendEmail()', exc_info=e)
+            raise Exception
+    else:
+        logging.info("sendEmail() no new messages were found to be sent")
 
 
     
