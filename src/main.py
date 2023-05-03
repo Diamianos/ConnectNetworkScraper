@@ -32,7 +32,9 @@ def main():
 
     # collection_subjects_and_messages = test_scraped_subject_and_message()
 
-    sendEmail(collection_subjects_and_messages)
+    new_collection_subjects_and_messages = remove_emails_from_send_list(collection_subjects_and_messages)
+
+    sendEmail(new_collection_subjects_and_messages)
 
     driver.close()
     driver.quit()
@@ -58,8 +60,8 @@ def sendEmail(collection_subjects_and_messages):
 
             logging.info('sendEmail() starting loop to send email')
             for i in collection_subjects_and_messages:
-                subject = i[0]
-                message = i[1]
+                subject = i['subject']
+                message = i['message']
 
                 logging.info('sendEmail() sending email with subject: ' + subject)
 
@@ -91,6 +93,55 @@ def sendEmail(collection_subjects_and_messages):
     else:
         logging.info("sendEmail() no new messages were found to be sent")
 
+def remove_emails_from_send_list(collection_subjects_and_messages):
+    logging.info('parseSubjectsFromEmailsToBeSent() function start')
+
+    if len(collection_subjects_and_messages) > 0:
+        try:
+            # Parsing out all subjects that are to be sent
+            subjects = []
+            for i in collection_subjects_and_messages:
+                subjects.append(i["subject"])
+
+            # Prompt for user to see if any need to be removed
+            logging.info("Subjects: " + str(subjects))
+            print("\nTotal subjects:\n\n")
+            index = 1
+            for i in subjects:
+                print(str(index) + ": " + i)
+                index+= 1
+            input_string = input('The following emails were found to be sent, input any numbers you do not want included separated by a comma (for example: 1, 4, 5): ')
+
+            logging.info("Input string from user: " + input_string)
+            if input_string == '':
+                # No subjects to be discarded, returning full list
+                logging.info("No emails to skip, returning full list.")
+                return collection_subjects_and_messages
+            
+            # Parsing subjects to be discarded based on user input
+            index_of_subjects_to_be_discarded = input_string.split(',')
+            subjects_to_be_discarded = []
+            for i in index_of_subjects_to_be_discarded:
+                subjects_to_be_discarded.append(subjects[int(i) -1])
+            logging.info("Subjects to be discarded: " + str(subjects_to_be_discarded))
+
+            # Creating a new collection to be returned minus the not needed ones
+            new_collections_subjects_and_messages =  [i for i in collection_subjects_and_messages if i['subject'] not in subjects_to_be_discarded]
+            
+            logging.info("New collection and messages\n")
+            for i in new_collections_subjects_and_messages:
+                logging.info(str(i))
+                logging.info("\n")
+
+            return new_collections_subjects_and_messages
+        except Exception as e:
+            logging.info(e)
+            print(e)
+            return []
+    else:
+        logging.info("parseSubjectsFromEmailsToBeSent() no new messages were found to be sent")
+        return []
+
 
     
 def openEmailsAndExtractText(driver, emails_to_be_opened):
@@ -101,9 +152,8 @@ def openEmailsAndExtractText(driver, emails_to_be_opened):
     logging.info('openEmailsAndExtractText() beginning loop to open email and parse out messages')
     try:
         for e in emails_to_be_opened:
-            single_subject_and_message = []
-            # Adding the subject of the message 
-            single_subject_and_message.append(e.text.strip())
+            # Storing the subject of the message 
+            message_subject = e.text.strip()
 
             wait.until(EC.presence_of_element_located((By.LINK_TEXT, e.text.strip())))
             # Clicking the message link to get to message text
@@ -123,7 +173,7 @@ def openEmailsAndExtractText(driver, emails_to_be_opened):
                 if len(p.text) == 0:
                     continue
                 message_text += p.text + '\n\n'
-            single_subject_and_message.append(message_text)
+            single_subject_and_message = {'subject': message_subject, 'message': message_text}
             # Adding to the collection that is returned at end of function
             collection_subjects_and_messages.append(single_subject_and_message)
 
